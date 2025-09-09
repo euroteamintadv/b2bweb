@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EuroTeam B2B Services Srl | Soluzioni Business Internazionali</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* I tuoi stili CSS rimangono invariati */
+        /* ... */
+        
+        /* Aggiungi questi stili per il rate limiting */
+        .rate-limit-message {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+        
+        .chat-input:disabled {
+            background-color: #f8f9fa;
+            cursor: not-allowed;
+        }
+        
+        .chat-send:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            color: #6c757d;
+            font-style: italic;
+        }
+        
+        .typing-dots {
+            display: flex;
+            margin-left: 10px;
+        }
+        
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            background-color: #6c757d;
+            border-radius: 50%;
+            margin: 0 2px;
+            animation: typingAnimation 1.4s infinite ease-in-out;
+        }
+        
+        .typing-dot:nth-child(1) { animation-delay: 0s; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        
+        @keyframes typingAnimation {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-5px); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Il resto del tuo HTML rimane invariato -->
+    <!-- ... -->
+
+    <!-- AI Chat Widget -->
+    <div class="chat-widget">
+        <div class="chat-button">
+            <i class="fas fa-comments"></i>
+        </div>
+        
+        <div class="chat-container">
+            <div class="chat-header">
+                <h3><i class="fas fa-robot"></i> Assistente Virtuale <span class="language-indicator">48 lingue</span></h3>
+                <button class="chat-close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="chat-messages">
+                <div class="message bot">
+                    <div class="message-avatar">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <div class="message-content">
+                        Ciao! Sono l'assistente virtuale di EuroTeam. Posso rispondere alle tue domande in 48 lingue. Come posso aiutarti oggi?
+                    </div>
+                </div>
+            </div>
+            
+            <div class="chat-input-container">
+                <select class="language-select" id="language-select">
+                    <option value="it">Italiano</option>
+                    <option value="en">English</option>
+                    <option value="ro">Română</option>
+                    <option value="es">Español</option>
+                    <option value="fr">Français</option>
+                    <option value="de">Deutsch</option>
+                </select>
+                <input type="text" class="chat-input" placeholder="Scrivi un messaggio..." id="chat-input">
+                <button class="chat-send" id="chat-send"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configurazione Gemini e Rate Limiting
+        const GEMINI_API_KEY = 'TUO_API_KEY_GEMINI'; // Sostituisci con la tua API key
+        const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
+        
+        // Configurazione Rate Limiting
+        const RATE_LIMIT_CONFIG = {
+            MESSAGE_DELAY: 2000, // 2 secondi tra i messaggi
+            MAX_MESSAGES_PER_MINUTE: 10, // Massimo 10 messaggi per minuto
+            MAX_MESSAGES_PER_HOUR: 50, // Massimo 50 messaggi per ora
+            COOLDOWN_PERIOD: 30000 // 30 secondi di cooldown se si superano i limiti
+        };
+        
+        // Stato Rate Limiting
+        let rateLimitState = {
+            lastMessageTime: 0,
+            messageCountMinute: 0,
+            messageCountHour: 0,
+            minuteWindowStart: Date.now(),
+            hourWindowStart: Date.now(),
+            isRateLimited: false,
+            cooldownEnd: 0
+        };
+        
+        // Mappatura lingue per prompt
+        const languageMap = {
+            'it': 'italiano',
+            'en': 'inglese',
+            'ro': 'rumeno', 
+            'es': 'spagnolo',
+            'fr': 'francese',
+            'de': 'tedesco'
+        };
+
+        // Menu toggle (rimane invariato)
+        const menuToggle = document.querySelector('.menu-toggle');
+        const navLinks = document.querySelector('.nav-links');
+        
+        menuToggle.addEventListener('click', () => {
+            navLinks.classList.toggle('active');
+            menuToggle.innerHTML = navLinks.classList.contains('active') ? 
+                '<i class="fas fa-times"></i>' : '<i class="fas fa-bars"></i>';
+        });
+
+        // Scroll animations (rimane invariato)
+        const observerOptions = {
+            root: null,
+            rootMargin: '0px',
+            threshold: 0.1
+        };
+        
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, observerOptions);
+        
+        document.querySelectorAll('.feature-card, .service-card').forEach(card => {
+            observer.observe(card);
+        });
+
+        // Stats counter animation (rimane invariato)
+        const counters = document.querySelectorAll('.stat-number');
+        const speed = 200;
+        
+        const animateCounters = () => {
+            counters.forEach(counter => {
+                const target = +counter.getAttribute('data-count');
+                const count = +counter.innerText;
+                const increment = Math.ceil(target / speed);
+                
+                if (count < target) {
+                    counter.innerText = count + increment;
+                    setTimeout(() => animateCounters(), 1);
+                } else {
+                    counter.innerText = target;
+                }
+            });
+        };
+        
+        let counted = false;
+        
+        const counterSection = document.querySelector('.stats');
+        window.addEventListener('scroll', () => {
+            const sectionPos = counterSection.getBoundingClientRect().top;
+            const screenPos = window.innerHeight / 1.3;
+            
+            if (sectionPos < screenPos && !counted) {
+                animateCounters();
+                counted = true;
+            }
+        });
+
+        // Chat widget
+        const chatButton = document.querySelector('.chat-button');
+        const chatContainer = document.querySelector('.chat-container');
+        const chatClose = document.querySelector('.chat-close');
+        const chatInput = document.getElementById('chat-input');
+        const chatSend = document.getElementById('chat-send');
+        const chatMessages = document.querySelector('.chat-messages');
+        const languageSelect = document.getElementById('language-select');
+
+        chatButton.addEventListener('click', () => {
+            chatContainer.style.display = 'flex';
+            chatInput.focus();
+            updateRateLimitStatus(); // Aggiorna stato al click
+        });
+        
+        chatClose.addEventListener('click', () => {
+            chatContainer.style.display = 'none';
+        });
+
+        // Funzione per aggiornare lo stato del rate limiting
+        function updateRateLimitStatus() {
+            const now = Date.now();
+            
+            // Reset contatori ogni minuto
+            if (now - rateLimitState.minuteWindowStart > 60000) {
+                rateLimitState.messageCountMinute = 0;
+                rateLimitState.minuteWindowStart = now;
+            }
+            
+            // Reset contatori ogni ora
+            if (now - rateLimitState.hourWindowStart > 3600000) {
+                rateLimitState.messageCountHour = 0;
+                rateLimitState.hourWindowStart = now;
+            }
+            
+            // Controlla se siamo in cooldown
+            if (rateLimitState.isRateLimited && now > rateLimitState.cooldownEnd) {
+                rateLimitState.isRateLimited = false;
+            }
+            
+            // Aggiorna stato UI
+            updateUIStatus();
+        }
+
+        // Funzione per aggiornare lo stato UI
+        function updateUIStatus() {
+            const isLimited = rateLimitState.isRateLimited;
+            const now = Date.now();
+            
+            chatInput.disabled = isLimited;
+            chatSend.disabled = isLimited || chatInput.value.trim() === '';
+            
+            if (isLimited) {
+                const secondsLeft = Math.ceil((rateLimitState.cooldownEnd - now) / 1000);
+                chatInput.placeholder = `Riprova tra ${secondsLeft} secondi...`;
+            } else {
+                chatInput.placeholder = 'Scrivi un messaggio...';
+            }
+        }
+
+        // Funzione per controllare il rate limiting
+        function checkRateLimit() {
+            const now = Date.now();
+            updateRateLimitStatus();
+            
+            if (rateLimitState.isRateLimited) {
+                return {
+                    allowed: false,
+                    message: `Attendi ancora ${Math.ceil((rateLimitState.cooldownEnd - now) / 1000)} secondi`
+                };
+            }
+            
+            // Controlla delay tra messaggi
+            if (now - rateLimitState.lastMessageTime < RATE_LIMIT_CONFIG.MESSAGE_DELAY) {
+                return {
+                    allowed: false,
+                    message: 'Attendi un momento tra un messaggio e l\'altro'
+                };
+            }
+            
+            // Controlla limite per minuto
+            if (rateLimitState.messageCountMinute >= RATE_LIMIT_CONFIG.MAX_MESSAGES_PER_MINUTE) {
+                rateLimitState.isRateLimited = true;
+                rateLimitState.cooldownEnd = now + RATE_LIMIT_CONFIG.COOLDOWN_PERIOD;
+                updateUIStatus();
+                return {
+                    allowed: false,
+                    message: 'Limite messaggi raggiunto. Riprova tra 30 secondi.'
+                };
+            }
+            
+            // Controlla limite per ora
+            if (rateLimitState.messageCountHour >= RATE_LIMIT_CONFIG.MAX_MESSAGES_PER_HOUR) {
+                rateLimitState.isRateLimited = true;
+                rateLimitState.cooldownEnd = now + RATE_LIMIT_CONFIG.COOLDOWN_PERIOD;
+                updateUIStatus();
+                return {
+                    allowed: false,
+                    message: 'Limite orario raggiunto. Riprova tra 30 secondi.'
+                };
+            }
+            
+            return { allowed: true };
+        }
+
+        // Funzione per chiamare Gemini API
+        async function callGeminiAPI(userMessage, selectedLanguage) {
+            try {
+                const currentLanguage = languageMap[selectedLanguage] || 'italiano';
+                
+                const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [{
+                                text: `Sei un assistente virtuale di EuroTeam B2B Services, azienda specializzata in servizi business per la Romania. 
+                                Rispondi in ${currentLanguage} in modo professionale e utile.
+                                
+                                Informazioni su EuroTeam:
+                                - Servizi offerti: Sede Legale, Ufficio Virtuale, E-commerce, Assistenza Banche
+                                - Supporto in 5 lingue: Italiano, Inglese, Rumeno, Francese, Spagnolo
+                                - Oltre 15 anni di esperienza
+                                - Sede a Bucarest: Union International Center, 11 Ion Campineanu street
+                                
+                                Rispondi alla seguente domanda in ${currentLanguage}:
+                                ${userMessage}`
+                            }]
+                        }],
+                        generationConfig: {
+                            temperature: 0.7,
+                            maxOutputTokens: 500,
+                            topP: 0.8,
+                            topK: 40
+                        }
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+                    return data.candidates[0].content.parts[0].text;
+                } else {
+                    throw new Error('Risposta API non valida');
+                }
+                
+            } catch (error) {
+                console.error('Errore chiamata Gemini API:', error);
+                throw error;
+            }
+        }
+
+        // Funzione per aggiungere messaggi alla chat
+        function addMessage(text, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', sender);
+            
+            const avatar = document.createElement('div');
+            avatar.classList.add('message-avatar');
+            avatar.innerHTML = sender === 'bot' ? 
+                '<i class="fas fa-robot"></i>' : '<i class="fas fa-user"></i>';
+            
+            const content = document.createElement('div');
+            content.classList.add('message-content');
+            content.textContent = text;
+            
+            messageDiv.appendChild(avatar);
+            messageDiv.appendChild(content);
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Funzione per mostrare indicatore di typing
+        function showTypingIndicator() {
+            const typingIndicator = document.createElement('div');
+            typingIndicator.classList.add('message', 'bot');
+            typingIndicator.id = 'typing-indicator';
+            typingIndicator.innerHTML = `
+                <div class="message-avatar"><i class="fas fa-robot"></i></div>
+                <div class="message-content">
+                    <div class="typing-indicator">
+                        Digitando
+                        <div class="typing-dots">
+                            <div class="typing-dot"></div>
+                            <div class="typing-dot"></div>
+                            <div class="typing-dot"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            chatMessages.appendChild(typingIndicator);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            return typingIndicator;
+        }
+
+        // Funzione per rimuovere indicatore di typing
+        function removeTypingIndicator() {
+            const typingIndicator = document.getElementById('typing-indicator');
+            if (typingIndicator) {
+                chatMessages.removeChild(typingIndicator);
+            }
+        }
+
+        // Risposte di fallback
+        const fallbackResponses = {
+            'it': [
+                "Attualmente non posso rispondere alla tua domanda. Puoi contattarci direttamente all'indirizzo office@euroteamonline.ro",
+                "Mi scuso, sto avendo qualche difficoltà tecnica. Per assistenza immediata, chiamaci al +40 21 312 50 82",
+                "Al momento non posso processare la tua richiesta. Visita il nostro sito per maggiori informazioni"
+            ],
+            'en': [
+                "I'm currently unable to answer your question. Please contact us directly at office@euroteamonline.ro",
+                "I apologize, I'm experiencing some technical difficulties. For immediate assistance, call us at +40 21 312 50 82",
+                "I can't process your request at the moment. Visit our website for more information"
+            ],
+            'ro': [
+                "În prezent, nu vă pot răspunde la întrebare. Vă rugăm să ne contactați direct la office@euroteamonline.ro",
+                "Îmi cer scuze, întâmpin dificultăți tehnice. Pentru asistență imediată, sunați-ne la +40 21 312 50 82",
+                "Nu vă pot procesa cererea în acest moment. Vizitați site-ul nostru pentru mai multe informații"
+            ],
+            'es': [
+                "Actualmente no puedo responder a su pregunta. Por favor, contáctenos directamente en office@euroteamonline.ro",
+                "Me disculpo, estoy experimentando algunas dificultades técnicas. Para asistencia inmediata, llámenos al +40 21 312 50 82",
+                "No puedo procesar su solicitud en este momento. Visite nuestro sitio web para más información"
+            ],
+            'fr': [
+                "Je ne peux actuellement pas répondre à votre question. Veuillez nous contacter directement à office@euroteamonline.ro",
+                "Je m'excuse, je rencontre des difficultés técnicas. Pour une assistance immédiate, appelez-nous au +40 21 312 50 82",
+                "Je ne peux pas traiter votre demande pour le moment. Visitez notre site Web pour plus d'informations"
+            ],
+            'de': [
+                "Ich kann Ihre Frage derzeit nicht beantworten. Bitte kontaktieren Sie uns direkt unter office@euroteamonline.ro",
+                "Ich entschuldige mich, ich habe einige technische Schwierigkeiten. Für sofortige Unterstützung rufen Sie uns unter +40 21 312 50 82 an",
+                "Ich kann Ihre Anfrage derzeit nicht bearbeiten. Besuchen Sie unsere Website für weitere Informationen"
+            ]
+        };
+
+        // Funzione principale per inviare messaggi con rate limiting
+        async function sendMessage() {
+            const message = chatInput.value.trim();
+            if (message === '') return;
+            
+            // Controlla rate limiting
+            const rateLimitCheck = checkRateLimit();
+            if (!rateLimitCheck.allowed) {
+                addMessage(rateLimitCheck.message, 'bot');
+                return;
+            }
+            
+            // Aggiorna contatori rate limiting
+            const now = Date.now();
+            rateLimitState.lastMessageTime = now;
+            rateLimitState.messageCountMinute++;
+            rateLimitState.messageCountHour++;
+            
+            // Aggiungi messaggio utente
+            addMessage(message, 'user');
+            chatInput.value = '';
+            chatSend.disabled = true;
+            
+            // Mostra indicatore di typing
+            const typingIndicator = showTypingIndicator();
+            
+            try {
+                const selectedLanguage = languageSelect.value;
+                const botResponse = await callGeminiAPI(message, selectedLanguage);
+                
+                // Rimuovi indicatore di typing
+                removeTypingIndicator();
+                
+                // Aggiungi risposta
+                addMessage(botResponse, 'bot');
+                
+            } catch (error) {
+                console.error('Errore:', error);
+                
+                // Rimuovi indicatore di typing
+                removeTypingIndicator();
+                
+                // Usa risposta di fallback
+                const selectedLanguage = languageSelect.value;
+                const fallbacks = fallbackResponses[selectedLanguage] || fallbackResponses['it'];
+                const fallbackResponse = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+                
+                addMessage(fallbackResponse, 'bot');
+            } finally {
+                chatSend.disabled = false;
+                updateUIStatus();
+                
+                // Timer per reset automatico contatori
+                setTimeout(updateRateLimitStatus, 60000); // Controlla ogni minuto
+            }
+        }
+
+        // Event listeners
+        chatSend.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        // Aggiorna stato UI quando l'input cambia
+        chatInput.addEventListener('input', () => {
+            updateUIStatus();
+        });
+
+        // Inizializza UI
+        updateUIStatus();
+
+        // Service detail pages (rimane invariato)
+        const serviceLinks = document.querySelectorAll('[data-service]');
+        const serviceDetailPages = document.querySelectorAll('.service-detail-page');
+        const detailCloseButtons = document.querySelectorAll('.service-detail-close');
+        
+        serviceLinks.forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const serviceId = link.getAttribute('data-service');
+                const detailPage = document.getElementById(`service-detail-${serviceId}`);
+                
+                if (detailPage) {
+                    detailPage.style.display = 'block';
+                    document.body.style.overflow = 'hidden';
+                }
+            });
+        });
+        
+        detailCloseButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                serviceDetailPages.forEach(page => {
+                    page.style.display = 'none';
+                });
+                document.body.style.overflow = 'auto';
+            });
+        });
+        
+        // Close detail page when clicking outside content
+        serviceDetailPages.forEach(page => {
+            page.addEventListener('click', (e) => {
+                if (e.target === page) {
+                    page.style.display = 'none';
+                    document.body.style.overflow = 'auto';
+                }
+            });
+        });
+
+        // Form submission (rimane invariato)
+        const contactForm = document.getElementById('contactForm');
+        contactForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            alert('Grazie per il tuo messaggio! Ti contatteremo al più presto.');
+            contactForm.reset();
+        });
+    </script>
+</body>
+</html>
+@mdl
