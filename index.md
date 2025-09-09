@@ -1349,12 +1349,12 @@
                 </div>
                 
                 <div class="stat-item">
-                    <div class="stat-number" data-count="15">0</div>
+                    <div class="stat-number" data-count="23">0</div>
                     <div class="stat-text">Anni di esperienza</div>
                 </div>
                 
                 <div class="stat-item">
-                    <div class="stat-number" data-count="500">0</div>
+                    <div class="stat-number" data-count="649">0</div>
                     <div class="stat-text">Clienti soddisfatti</div>
                 </div>
             </div>
